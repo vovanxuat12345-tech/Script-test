@@ -7,9 +7,14 @@ local GuiService = game:GetService("GuiService")
 local player = Players.LocalPlayer
 
 -- ==========================================
--- ĐOẠN XỬ LÝ AUTO REJOIN CHUẨN (0.5S & TỰ BẬT FARM)
+-- ĐOẠN XỬ LÝ AUTO REJOIN CHUẨN (CHỐNG CHẠY TRÙNG 2 SCRIPT)
 -- ==========================================
+local isRejoining = false -- Biến khóa bảo vệ (Debounce) chống chạy trùng
+
 local function autoRejoin()
+    if isRejoining then return end -- Nếu đang trong quá trình rejoin thì bỏ qua các yêu cầu sau
+    isRejoining = true
+    
     if queue_on_teleport then
         -- Ép executor chạy lại script từ link github và gán biến kích hoạt auto farm
         queue_on_teleport([[
@@ -23,7 +28,7 @@ local function autoRejoin()
         ]])
     end
     
-    task.wait(0.5) -- Đổi thời gian chờ thành 0.5 giây theo yêu cầu
+    task.wait(0.5) -- Thời gian chờ 0.5 giây theo yêu cầu
     if #Players:GetPlayers() <= 1 then
         TeleportService:Teleport(game.PlaceId, player)
     else
@@ -260,7 +265,7 @@ end)
 if _G.IsAutoRejoin then
     _G.IsAutoRejoin = false -- Reset lại biến để tránh bị lặp vô tận ngoài ý muốn
     task.spawn(function()
-        -- Chờ màn hình loading "MADE BY CHIEN DO" biến mất hoàn toàn (khoảng 3.5 giây) rồi mới bắt đầu farm
+        -- Chờ màn hình loading "MADE BY CHIEN DO" biến mất hoàn toàn rồi mới bắt đầu farm
         task.wait(3.5) 
         if not running then
             startFarming()
