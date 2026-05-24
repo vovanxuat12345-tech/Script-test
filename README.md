@@ -2,7 +2,46 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
 local player = Players.LocalPlayer
+
+-- ==========================================
+-- ĐOẠN XỬ LÝ AUTO REJOIN CHUẨN (0.5S & TỰ BẬT FARM)
+-- ==========================================
+local function autoRejoin()
+    if queue_on_teleport then
+        -- Ép executor chạy lại script từ link github và gán biến kích hoạt auto farm
+        queue_on_teleport([[
+            _G.IsAutoRejoin = true
+            repeat task.wait() until game:IsLoaded()
+            local p = game:GetService("Players").LocalPlayer
+            repeat task.wait() until p and p:FindFirstChild("PlayerGui")
+            
+            -- Tải lại chính xác script từ link của bạn
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/vovanxuat12345-tech/Script-test/refs/heads/main/README.md"))()
+        ]])
+    end
+    
+    task.wait(0.5) -- Đổi thời gian chờ thành 0.5 giây theo yêu cầu
+    if #Players:GetPlayers() <= 1 then
+        TeleportService:Teleport(game.PlaceId, player)
+    else
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+    end
+end
+
+-- Lắng nghe sự kiện bị kick hoặc lỗi mất kết nối
+GuiService.ErrorMessageChanged:Connect(function()
+    autoRejoin()
+end)
+
+game:GetService("CoreGui").RobloxPromptGui.promptOverlay.ChildAdded:Connect(function(child)
+    if child.Name == "ErrorPrompt" then
+        autoRejoin()
+    end
+end)
+-- ==========================================
 
 local DEFAULT_SETTINGS = {
     FLY_UP_HEIGHT = 10,
@@ -19,6 +58,10 @@ local isMinimized = false
 local protectionConnection = nil
 
 local function createLoadingScreen()
+    if not player:FindFirstChild("PlayerGui") then
+        repeat task.wait() until player:FindFirstChild("PlayerGui")
+    end
+
     local loadingGui = Instance.new("ScreenGui", player.PlayerGui)
     loadingGui.Name = "Loading_ChienDo"; loadingGui.DisplayOrder = 999
     local bg = Instance.new("Frame", loadingGui); bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = Color3.new(0, 0, 0); bg.BackgroundTransparency = 0.2; bg.BorderSizePixel = 0
@@ -151,49 +194,58 @@ local function flyToTarget(target)
     task.wait(DEFAULT_SETTINGS.WAIT_TIME) 
 end
 
-btn.MouseButton1Click:Connect(function()
-    if running then
-        running = false; toggleProtection(false)
-        btn.Text = "Auto Farm Stage: OFF"; btn.BackgroundColor3 = Color3.new(1, 1, 1); btn.TextColor3 = Color3.new(0, 0, 0)
-    else
-        running = true; toggleProtection(true)
-        btn.Text = "Auto Farm Stage: ON"; btn.BackgroundColor3 = Color3.new(1, 0, 0); btn.TextColor3 = Color3.new(1, 1, 1)
-        
-        task.spawn(function()
-            local lastFoundTime = tick()
-            while running do
-                local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-                if not hrp then task.wait(1) continue end
-                
-                local closestStageNum = -1
-                local minDist = math.huge
-                
-                for _, cp in pairs(DEFAULT_SETTINGS.CHECKPOINT_FOLDER:GetChildren()) do
-                    local stageNum = tonumber(cp.Name)
-                    if stageNum and cp:IsA("BasePart") then
-                        local d = (hrp.Position - cp.Position).Magnitude
-                        if d < minDist then
-                            minDist = d
-                            closestStageNum = stageNum
-                        end
+-- Hàm kích hoạt trạng thái Farm
+local function startFarming()
+    running = true; toggleProtection(true)
+    btn.Text = "Auto Farm Stage: ON"; btn.BackgroundColor3 = Color3.new(1, 0, 0); btn.TextColor3 = Color3.new(1, 1, 1)
+    
+    task.spawn(function()
+        local lastFoundTime = tick()
+        while running do
+            local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then task.wait(1) continue end
+            
+            local closestStageNum = -1
+            local minDist = math.huge
+            
+            for _, cp in pairs(DEFAULT_SETTINGS.CHECKPOINT_FOLDER:GetChildren()) do
+                local stageNum = tonumber(cp.Name)
+                if stageNum and cp:IsA("BasePart") then
+                    local d = (hrp.Position - cp.Position).Magnitude
+                    if d < minDist then
+                        minDist = d
+                        closestStageNum = stageNum
                     end
-                end
-                
-                local nextTarget = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild(tostring(closestStageNum + 1))
-                
-                if nextTarget then
-                    lastFoundTime = tick()
-                    flyToTarget(nextTarget)
-                else
-                    if tick() - lastFoundTime > 5 then
-                        scanMultiplier = 2
-                        currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED * 1.5
-                        lastFoundTime = tick()
-                    end
-                    task.wait(0.5)
                 end
             end
-        end)
+            
+            local nextTarget = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild(tostring(closestStageNum + 1))
+            
+            if nextTarget then
+                lastFoundTime = tick()
+                flyToTarget(nextTarget)
+            else
+                if tick() - lastFoundTime > 5 then
+                    scanMultiplier = 2
+                    currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED * 1.5
+                    lastFoundTime = tick()
+                end
+                task.wait(0.5)
+            end
+        end
+    end)
+end
+
+local function stopFarming()
+    running = false; toggleProtection(false)
+    btn.Text = "Auto Farm Stage: OFF"; btn.BackgroundColor3 = Color3.new(1, 1, 1); btn.TextColor3 = Color3.new(0, 0, 0)
+end
+
+btn.MouseButton1Click:Connect(function()
+    if running then
+        stopFarming()
+    else
+        startFarming()
     end
 end)
 
@@ -203,3 +255,15 @@ player.CharacterAdded:Connect(function()
     scanMultiplier = 1
     btn.Text = "Auto Farm Stage: OFF"; btn.BackgroundColor3 = Color3.new(1, 1, 1) 
 end)
+
+-- KÍCH HOẠT AUTO FARM CHỈ KHI REJOIN THÀNH CÔNG
+if _G.IsAutoRejoin then
+    _G.IsAutoRejoin = false -- Reset lại biến để tránh bị lặp vô tận ngoài ý muốn
+    task.spawn(function()
+        -- Chờ màn hình loading "MADE BY CHIEN DO" biến mất hoàn toàn (khoảng 3.5 giây) rồi mới bắt đầu farm
+        task.wait(3.5) 
+        if not running then
+            startFarming()
+        end
+    end)
+end
