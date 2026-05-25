@@ -337,19 +337,19 @@ local function flyToTarget(target)
     if conn then conn:Disconnect(); conn = nil end 
     
     -- ========================================================
-    -- ĐÃ SỬA: PHÁT HIỆN CHECKPOINT "243" THÌ BAY SANG TRÁI 1000 STUDS
+    -- ĐÃ SỬA: PHÁT HIỆN CHECKPOINT "243" THÌ BAY SANG TRÁI 200 STUDS
     -- ========================================================
     if target.Name == "243" and running then
-        -- Lấy Vector hướng bên trái nhân vật dựa vào CFrame hiện tại (-RightVector)
+        -- Xác định hướng bên trái nhân vật (-RightVector)
         local leftDirection = -hrp.CFrame.RightVector
-        local leftTargetPos = hrp.Position + (leftDirection * 1000)
+        local leftTargetPos = hrp.Position + (leftDirection * 200)
         
-        -- Tiến hành dùng Vận tốc (Fly) bằng biến currentFlySpeed để bay sang trái
+        -- Thực hiện bay bằng biến vận tốc currentFlySpeed có sẵn
         while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(leftTargetPos.X, leftTargetPos.Z)).Magnitude > 5 do
             hrp.Velocity = leftDirection * currentFlySpeed
             task.wait()
         end
-        hrp.Velocity = Vector3.new(0, 0.2, 0) -- Reset lại vận tốc sau khi bay xong
+        hrp.Velocity = Vector3.new(0, 0.2, 0) -- Reset lại vận tốc
     end
     -- ========================================================
     
