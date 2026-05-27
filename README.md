@@ -337,19 +337,18 @@ local function flyToTarget(target)
     if conn then conn:Disconnect(); conn = nil end 
     
     -- ========================================================
-    -- ĐÃ SỬA: PHÁT HIỆN CHECKPOINT "243" THÌ BAY SANG TRÁI 200 STUDS
+    -- ĐÃ SỬA CHUẨN: CHẠM STAGE 243 SẼ BAY VẬN TỐC THEO TRỤC +Z ĐỦ 250 STUDS
     -- ========================================================
     if target.Name == "243" and running then
-        -- Xác định hướng bên trái nhân vật (-RightVector)
-        local leftDirection = -hrp.CFrame.RightVector
-        local leftTargetPos = hrp.Position + (leftDirection * 200)
+        local directionZ = Vector3.new(0, 0, 1) -- Hướng trục xanh dương (+Z) theo Screenshot_20260527-113517_Roblox.jpg
+        local targetFlyPos = hrp.Position + (directionZ * 250)
         
-        -- Thực hiện bay bằng biến vận tốc currentFlySpeed có sẵn
-        while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(leftTargetPos.X, leftTargetPos.Z)).Magnitude > 5 do
-            hrp.Velocity = leftDirection * currentFlySpeed
+        -- Dùng vòng lặp vận tốc (Velocity) để thực hiện hành động bay mượt mà
+        while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetFlyPos.X, targetFlyPos.Z)).Magnitude > 5 do
+            hrp.Velocity = directionZ * currentFlySpeed
             task.wait()
         end
-        hrp.Velocity = Vector3.new(0, 0.2, 0) -- Reset lại vận tốc
+        hrp.Velocity = Vector3.new(0, 0.2, 0) -- Reset lại vận tốc sau khi bay xong 250 studs
     end
     -- ========================================================
     
