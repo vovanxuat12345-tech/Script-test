@@ -248,7 +248,10 @@ local function toggleProtection(state)
             protectionConnection = RunService.Stepped:Connect(function()
                 if player.Character and not isHandling243 then 
                     local h = player.Character:FindFirstChildOfClass("Humanoid")
-                    if h then h.MaxHealth = math.huge; h.Health = math.huge; h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end
+                    if h then 
+                        h.MaxHealth = math.huge; h.Health = math.huge
+                        h:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+                    end
                     for _, p in pairs(player.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
                 end
             end)
@@ -268,6 +271,7 @@ local function flyToTarget(target)
     if isHandling243 then return end 
     
     local char = player.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
     if not hrp or not target then return end
     
     local touched = false
@@ -300,7 +304,12 @@ local function flyToTarget(target)
         end
     end
 
-    if not isHandling243 and not isStuckRollback then hrp.Velocity = Vector3.new(0, 0.2, 0) end
+    -- Khóa cứng lực quán tính ngay khi dừng lại để chặn đứng việc tự nảy lên trời
+    if hrp then 
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        hrp.Velocity = Vector3.new(0, 0, 0)
+    end
+    
     if conn then conn:Disconnect(); conn = nil end 
     
     currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED
@@ -339,7 +348,8 @@ local function startFarming()
                             task.wait()
                         end
                         
-                        hrp.Velocity = Vector3.new(0, 0.2, 0) 
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        hrp.Velocity = Vector3.new(0, 0, 0)
                         
                         local h = char:FindFirstChildOfClass("Humanoid")
                         if h then h.MaxHealth = math.huge; h.Health = math.huge; h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end
@@ -355,30 +365,41 @@ local function startFarming()
 
     -- ========================================================
     -- LUỒNG QUÉT TỰ ĐỘNG PHÁT HIỆN BỊ TP VỀ CHỖ CŨ (HỤT STAGE -> LÙI -1)
+    -- VÀ TRIỆT TIÊU TRẠNG THÁI TỰ NHẢY VẬT LÝ
     -- ========================================================
     task.spawn(function()
         while running do
-            task.wait(0.1) -- Quét liên tục kiểm tra vị trí
+            task.wait(0.05) -- Tăng tốc độ quét lên nhanh hơn để bắt kịp khoảnh khắc giật lùi
             
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
             
-            -- Nếu đang nhắm mục tiêu hợp lệ (> 1) và không trong chuỗi xử lý đặc biệt 243
             if hrp and currentTargetStageNum > 1 and not isHandling243 and not isStuckRollback then
-                -- Tìm vị trí checkpoint cũ đứng ngay phía trước (currentTargetStageNum - 1)
                 local previousStage = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild(tostring(currentTargetStageNum - 1))
                 
                 if previousStage and previousStage:IsA("BasePart") then
-                    -- Nếu khoảng cách của nhân vật đột ngột cực gần checkpoint cũ (< 8 studs) 
-                    -- trong khi đáng lẽ ra đang phải bay tới checkpoint mới -> Game vừa kéo giật lùi mình về (Hụt stage!)
+                    -- Nếu khoảng cách đột ngột giật lùi về checkpoint cũ
                     if (hrp.Position - previousStage.Position).Magnitude < 8 then
-                        isStuckRollback = true -- Kích hoạt cờ báo hiệu lùi stage, ngắt luồng bay hiện tại
+                        isStuckRollback = true 
                         
-                        -- Thực hiện trừ đi 1 stage mục tiêu để hệ thống tính toán lại
+                        -- Khóa cứng trạng thái vật lý của nhân vật lại ngay lập tức không cho nhảy lung tung
+                        if humanoid then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+                        end
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        
+                        -- Trừ đi 1 stage mục tiêu
                         currentTargetStageNum = currentTargetStageNum - 1 
                         
-                        task.wait(0.3) -- Chờ nhẹ cho trạng thái ổn định lại
-                        isStuckRollback = false -- Nhả cờ để tiếp tục vòng lặp farm mới
+                        task.wait(0.2) 
+                        
+                        -- Trả lại trạng thái bình thường sau khi đã ổn định tọa độ
+                        if humanoid then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                        end
+                        isStuckRollback = false 
                     end
                 end
             end
@@ -393,7 +414,6 @@ local function startFarming()
             local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             if not hrp then task.wait(1) continue end
             
-            -- Chỉ quét tìm vị trí gần nhất khi hệ thống không trong trạng thái đang xử lý lùi stage
             local closestStageNum = -1
             local minDist = math.huge
             
@@ -408,9 +428,7 @@ local function startFarming()
                 end
             end
             
-            -- Cập nhật Stage mục tiêu tiếp theo vào biến chung để luồng check rollback kiểm soát
             currentTargetStageNum = closestStageNum + 1
-            
             local nextTarget = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild(tostring(currentTargetStageNum))
             
             if nextTarget then
