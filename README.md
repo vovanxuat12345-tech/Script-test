@@ -74,6 +74,7 @@ local scanMultiplier = 1
 local running = false
 local isMinimized = false
 local protectionConnection = nil
+local isHandling243 = false -- Biến cờ chặn xung đột vòng lặp
 
 -- ==========================================
 -- MENU LOADING CHỮ MÀU ĐỎ + SUBTITLE ROBTOP
@@ -287,7 +288,7 @@ local function toggleProtection(state)
     if state then
         if not protectionConnection then
             protectionConnection = RunService.Stepped:Connect(function()
-                if player.Character then
+                if player.Character and not isHandling243 then 
                     local h = player.Character:FindFirstChildOfClass("Humanoid")
                     if h then h.MaxHealth = math.huge; h.Health = math.huge; h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end
                     for _, p in pairs(player.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
@@ -300,6 +301,8 @@ local function toggleProtection(state)
 end
 
 local function flyToTarget(target)
+    if isHandling243 then return end 
+    
     local char = player.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp or not target then return end
     
@@ -314,17 +317,17 @@ local function flyToTarget(target)
     local targetPos = target.Position 
 
     local upY = hrp.Position.Y + DEFAULT_SETTINGS.FLY_UP_HEIGHT
-    while running and not touched and hrp.Position.Y < upY - 1 do 
+    while running and not touched and not isHandling243 and hrp.Position.Y < upY - 1 do 
         hrp.Velocity = Vector3.new(0, 50, 0); task.wait() 
     end
     
-    while running and not touched and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetPos.X, targetPos.Z)).Magnitude > 4 do
+    while running and not touched and not isHandling243 and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetPos.X, targetPos.Z)).Magnitude > 4 do
         hrp.Velocity = (Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z) - hrp.Position).Unit * currentFlySpeed
         task.wait()
     end
     
     local t = tick()
-    while running and not touched do
+    while running and not touched and not isHandling243 do
         hrp.Velocity = (targetPos - hrp.Position).Unit * (currentFlySpeed * 0.4)
         task.wait()
         if tick() - t > 6 then 
@@ -333,7 +336,7 @@ local function flyToTarget(target)
         end
     end
 
-    hrp.Velocity = Vector3.new(0, 0.2, 0)
+    if not isHandling243 then hrp.Velocity = Vector3.new(0, 0.2, 0) end
     if conn then conn:Disconnect(); conn = nil end 
     
     currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED
@@ -347,27 +350,41 @@ local function startFarming()
     btn.Text = "Auto Farm Stage: ON"; btn.BackgroundColor3 = Color3.new(1, 0, 0); btn.TextColor3 = Color3.new(1, 1, 1)
     
     -- ========================================================
-    -- ĐÃ SỬA CHUẨN: VÒNG LẶP KIỂM TRA LIÊN TỤC KỂ CẢ KHI ĐANG ĐỨNG TRÊN STAGE 243
+    -- SỬA LẠI: BẬT LẠI FARM NGAY LẬP TỨC (0 GIÂY PHÍ THỜI GIAN)
     -- ========================================================
     task.spawn(function()
         while running do
             local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             local cp243 = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild("243")
             
-            if hrp and cp243 and cp243:IsA("BasePart") then
-                -- Kiểm tra khoảng cách thực tế giữa nhân vật và checkpoint 243 (Dưới 10 studs nghĩa là đang chạm hoặc đứng trên đó)
+            if hrp and cp243 and cp243:IsA("BasePart") and not isHandling243 then
                 local distance = (hrp.Position - cp243.Position).Magnitude
-                if distance < 10 then
-                    local directionZ = Vector3.new(0, 0, 1) -- Hướng trục xanh dương (+Z) theo Screenshot_20260527-113517_Roblox.jpg
+                if distance < 12 then 
+                    isHandling243 = true -- Khóa farm thường lại
+                    
+                    for _, p in pairs(player.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end
+                    
+                    local directionZ = Vector3.new(0, 0, 1) 
                     local targetFlyPos = hrp.Position + (directionZ * 250)
                     
-                    -- Thực hiện hành động bay bằng Vận tốc (Velocity) đủ quãng đường 250 studs
-                    while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetFlyPos.X, targetFlyPos.Z)).Magnitude > 5 do
-                        hrp.Velocity = directionZ * currentFlySpeed
+                    -- Đẩy bay thẳng tiến 250 studs
+                    while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetFlyPos.X, targetFlyPos.Z)).Magnitude > 6 do
+                        hrp.Velocity = directionZ * DEFAULT_SETTINGS.FLY_SPEED
                         task.wait()
                     end
-                    hrp.Velocity = Vector3.new(0, 0.2, 0) -- Reset lại vận tốc sau khi bay xong
-                    task.wait(1) -- Tránh kích hoạt lại liên tục quá nhanh khi vừa bay xong
+                    
+                    hrp.Velocity = Vector3.new(0, 0.2, 0) -- Hãm lực gán vận tốc
+                    
+                    -- Khôi phục trạng thái bảo vệ chống chết/xuyên tường ngay tức khắc
+                    local h = player.Character:FindFirstChildOfClass("Humanoid")
+                    if h then h.MaxHealth = math.huge; h.Health = math.huge; h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end
+                    for _, p in pairs(player.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
+                    
+                    -- 🔥 BẬT LẠI FARM 0S: Hủy cờ chặn lập tức để luồng quét tiếp tục xử lý
+                    isHandling243 = false 
+                    
+                    -- Chỉ chờ đúng 1 frame cực nhỏ để nhường quyền xử lý cho luồng farm chính di chuyển ra xa
+                    task.wait() 
                 end
             end
             task.wait(0.1)
@@ -378,6 +395,8 @@ local function startFarming()
     task.spawn(function()
         local lastFoundTime = tick()
         while running do
+            if isHandling243 then task.wait() continue end -- Chờ cực kỳ ngắn để bắt nhịp quét mượt mà nhất
+            
             local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             if not hrp then task.wait(1) continue end
             
@@ -413,7 +432,7 @@ local function startFarming()
 end
 
 local function stopFarming()
-    running = false; toggleProtection(false)
+    running = false; isHandling243 = false; toggleProtection(false)
     btn.Text = "Auto Farm Stage: OFF"; btn.BackgroundColor3 = Color3.new(1, 1, 1); btn.TextColor3 = Color3.new(0, 0, 0)
 end
 
@@ -422,7 +441,7 @@ btn.MouseButton1Click:Connect(function()
 end)
 
 player.CharacterAdded:Connect(function() 
-    running = false; toggleProtection(false)
+    running = false; isHandling243 = false; toggleProtection(false)
     currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED
     scanMultiplier = 1
     btn.Text = "Auto Farm Stage: OFF"; btn.BackgroundColor3 = Color3.new(1, 1, 1) 
@@ -432,7 +451,7 @@ end)
 if _G.IsAutoRejoin then
     _G.IsAutoRejoin = nil
     task.spawn(function()
-        task.wait(3.5) -- Đợi hiệu ứng chữ chạy xong hoàn toàn (3.5s) rồi bắt đầu farm
+        task.wait(3.5) 
         if not running then
             startFarming()
         end
