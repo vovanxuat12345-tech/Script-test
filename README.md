@@ -350,44 +350,48 @@ local function startFarming()
     btn.Text = "Auto Farm Stage: ON"; btn.BackgroundColor3 = Color3.new(1, 0, 0); btn.TextColor3 = Color3.new(1, 1, 1)
     
     -- ========================================================
-    -- SỬA LẠI: BẬT LẠI FARM NGAY LẬP TỨC (0 GIÂY PHÍ THỜI GIAN)
+    -- SỬA LẠI SỰ KIỆN: CHẠM THẬT SỰ VÀO CHECKPOINT 243 MỚI PHÓNG
     -- ========================================================
     task.spawn(function()
-        while running do
-            local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-            local cp243 = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild("243")
-            
-            if hrp and cp243 and cp243:IsA("BasePart") and not isHandling243 then
-                local distance = (hrp.Position - cp243.Position).Magnitude
-                if distance < 12 then 
-                    isHandling243 = true -- Khóa farm thường lại
-                    
-                    for _, p in pairs(player.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end
-                    
-                    local directionZ = Vector3.new(0, 0, 1) 
-                    local targetFlyPos = hrp.Position + (directionZ * 250)
-                    
-                    -- Đẩy bay thẳng tiến 250 studs
-                    while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetFlyPos.X, targetFlyPos.Z)).Magnitude > 6 do
-                        hrp.Velocity = directionZ * DEFAULT_SETTINGS.FLY_SPEED
-                        task.wait()
+        local cp243 = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild("243")
+        if cp243 and cp243:IsA("BasePart") then
+            cp243.Touched:Connect(function(hit)
+                if not running or isHandling243 then return end
+                
+                local char = player.Character
+                if char and hit:IsDescendantOf(char) then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        isHandling243 = true -- Khóa farm thường lại lập tức
+                        
+                        -- Chờ 0.1 giây siêu ngắn cho game nhận điểm Checkpoint an toàn, tránh bị hệ thống quét kick
+                        task.wait(0.1)
+                        
+                        -- Bật lại va chạm để không bị rớt vô định
+                        for _, p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end
+                        
+                        local directionZ = Vector3.new(0, 0, 1) 
+                        local targetFlyPos = hrp.Position + (directionZ * 250)
+                        
+                        -- Đẩy nhân vật bay thẳng tiến 250 studs
+                        while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetFlyPos.X, targetFlyPos.Z)).Magnitude > 6 do
+                            hrp.Velocity = directionZ * DEFAULT_SETTINGS.FLY_SPEED
+                            task.wait()
+                        end
+                        
+                        hrp.Velocity = Vector3.new(0, 0.2, 0) -- Hãm phanh vận tốc
+                        
+                        -- Khôi phục bảo vệ chống chết/xuyên tường ngay tức khắc
+                        local h = char:FindFirstChildOfClass("Humanoid")
+                        if h then h.MaxHealth = math.huge; h.Health = math.huge; h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end
+                        for _, p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
+                        
+                        -- 🔥 BẬT LẠI FARM NGAY: Trả cờ về false để luồng quét farm stage 244 chạy tiếp
+                        isHandling243 = false 
+                        task.wait() 
                     end
-                    
-                    hrp.Velocity = Vector3.new(0, 0.2, 0) -- Hãm lực gán vận tốc
-                    
-                    -- Khôi phục trạng thái bảo vệ chống chết/xuyên tường ngay tức khắc
-                    local h = player.Character:FindFirstChildOfClass("Humanoid")
-                    if h then h.MaxHealth = math.huge; h.Health = math.huge; h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end
-                    for _, p in pairs(player.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
-                    
-                    -- 🔥 BẬT LẠI FARM 0S: Hủy cờ chặn lập tức để luồng quét tiếp tục xử lý
-                    isHandling243 = false 
-                    
-                    -- Chỉ chờ đúng 1 frame cực nhỏ để nhường quyền xử lý cho luồng farm chính di chuyển ra xa
-                    task.wait() 
                 end
-            end
-            task.wait(0.1)
+            end)
         end
     end)
     -- ========================================================
@@ -395,7 +399,7 @@ local function startFarming()
     task.spawn(function()
         local lastFoundTime = tick()
         while running do
-            if isHandling243 then task.wait() continue end -- Chờ cực kỳ ngắn để bắt nhịp quét mượt mà nhất
+            if isHandling243 then task.wait() continue end 
             
             local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             if not hrp then task.wait(1) continue end
@@ -447,7 +451,7 @@ player.CharacterAdded:Connect(function()
     btn.Text = "Auto Farm Stage: OFF"; btn.BackgroundColor3 = Color3.new(1, 1, 1) 
 end)
 
--- KÍCH HOẠT AUTO FARM CHỈ KHI REJOIN THÀNH CÔNG
+-- KÍCH HOẠTO AUTO FARM CHỈ KHI REJOIN THÀNH CÔNG
 if _G.IsAutoRejoin then
     _G.IsAutoRejoin = nil
     task.spawn(function()
