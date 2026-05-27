@@ -64,7 +64,7 @@ end)
 local DEFAULT_SETTINGS = {
     FLY_UP_HEIGHT = 10,
     FLY_SPEED = 200, 
-    WAIT_TIME = 0.28,
+    WAIT_TIME = 0.28, -- Thời gian chờ gốc của bồ
     CHECKPOINT_FOLDER = workspace:WaitForChild("Checkpoints", 15)
 }
 
@@ -350,7 +350,7 @@ local function startFarming()
     btn.Text = "Auto Farm Stage: ON"; btn.BackgroundColor3 = Color3.new(1, 0, 0); btn.TextColor3 = Color3.new(1, 1, 1)
     
     -- ========================================================
-    -- SỬA LẠI SỰ KIỆN: CHẠM THẬT SỰ VÀO CHECKPOINT 243 MỚI PHÓNG
+    -- ĐÃ SỬA: CHỜ ĐÚNG CHUẨN WAIT_TIME (0.28S) KHI CHẠM 243 RỒI MỚI PHÓNG
     -- ========================================================
     task.spawn(function()
         local cp243 = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild("243")
@@ -362,12 +362,12 @@ local function startFarming()
                 if char and hit:IsDescendantOf(char) then
                     local hrp = char:FindFirstChild("HumanoidRootPart")
                     if hrp then
-                        isHandling243 = true -- Khóa farm thường lại lập tức
+                        isHandling243 = true -- Khóa farm thường lại
                         
-                        -- Chờ 0.1 giây siêu ngắn cho game nhận điểm Checkpoint an toàn, tránh bị hệ thống quét kick
-                        task.wait(0.1)
+                        -- CHỜ ĐÚNG 0.28 GIÂY theo cài đặt gốc của bồ để game lưu điểm
+                        task.wait(DEFAULT_SETTINGS.WAIT_TIME)
                         
-                        -- Bật lại va chạm để không bị rớt vô định
+                        -- Bật lại va chạm để chuẩn bị đẩy bay thẳng tiến
                         for _, p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end
                         
                         local directionZ = Vector3.new(0, 0, 1) 
@@ -386,7 +386,7 @@ local function startFarming()
                         if h then h.MaxHealth = math.huge; h.Health = math.huge; h:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end
                         for _, p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
                         
-                        -- 🔥 BẬT LẠI FARM NGAY: Trả cờ về false để luồng quét farm stage 244 chạy tiếp
+                        -- Nhả khóa farm để quét tiếp stage tiếp theo ngay lập tức (0s)
                         isHandling243 = false 
                         task.wait() 
                     end
@@ -451,7 +451,7 @@ player.CharacterAdded:Connect(function()
     btn.Text = "Auto Farm Stage: OFF"; btn.BackgroundColor3 = Color3.new(1, 1, 1) 
 end)
 
--- KÍCH HOẠTO AUTO FARM CHỈ KHI REJOIN THÀNH CÔNG
+-- KÍCH HOẠT AUTO FARM CHỈ KHI REJOIN THÀNH CÔNG
 if _G.IsAutoRejoin then
     _G.IsAutoRejoin = nil
     task.spawn(function()
