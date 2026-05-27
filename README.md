@@ -67,7 +67,7 @@ end)
 -- CẤU HÌNH CHIẾN THUẬT MỚI THEO YÊU CẦU CỦA BỒ
 local DEFAULT_SETTINGS = {
     FLY_UP_HEIGHT = 0,    -- Đã chỉnh về 0 (Bay thẳng không nhấc cao)
-    FLY_SPEED = 500,      -- Đã tăng lên 500 studs/s siêu tốc độ
+    FLY_SPEED = 300,      -- Đã tăng lên 500 studs/s siêu tốc độ
     WAIT_TIME = 0.35,     -- Đã chỉnh khoảng nghỉ 0.35s
     CHECKPOINT_FOLDER = workspace:WaitForChild("Checkpoints", 15)
 }
