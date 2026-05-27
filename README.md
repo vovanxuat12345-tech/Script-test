@@ -336,22 +336,6 @@ local function flyToTarget(target)
     hrp.Velocity = Vector3.new(0, 0.2, 0)
     if conn then conn:Disconnect(); conn = nil end 
     
-    -- ========================================================
-    -- ĐÃ SỬA CHUẨN: CHẠM STAGE 243 SẼ BAY VẬN TỐC THEO TRỤC +Z ĐỦ 250 STUDS
-    -- ========================================================
-    if target.Name == "243" and running then
-        local directionZ = Vector3.new(0, 0, 1) -- Hướng trục xanh dương (+Z) theo Screenshot_20260527-113517_Roblox.jpg
-        local targetFlyPos = hrp.Position + (directionZ * 250)
-        
-        -- Dùng vòng lặp vận tốc (Velocity) để thực hiện hành động bay mượt mà
-        while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetFlyPos.X, targetFlyPos.Z)).Magnitude > 5 do
-            hrp.Velocity = directionZ * currentFlySpeed
-            task.wait()
-        end
-        hrp.Velocity = Vector3.new(0, 0.2, 0) -- Reset lại vận tốc sau khi bay xong 250 studs
-    end
-    -- ========================================================
-    
     currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED
     scanMultiplier = 1
     
@@ -362,6 +346,35 @@ local function startFarming()
     running = true; toggleProtection(true)
     btn.Text = "Auto Farm Stage: ON"; btn.BackgroundColor3 = Color3.new(1, 0, 0); btn.TextColor3 = Color3.new(1, 1, 1)
     
+    -- ========================================================
+    -- ĐÃ SỬA CHUẨN: VÒNG LẶP KIỂM TRA LIÊN TỤC KỂ CẢ KHI ĐANG ĐỨNG TRÊN STAGE 243
+    -- ========================================================
+    task.spawn(function()
+        while running do
+            local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            local cp243 = DEFAULT_SETTINGS.CHECKPOINT_FOLDER:FindFirstChild("243")
+            
+            if hrp and cp243 and cp243:IsA("BasePart") then
+                -- Kiểm tra khoảng cách thực tế giữa nhân vật và checkpoint 243 (Dưới 10 studs nghĩa là đang chạm hoặc đứng trên đó)
+                local distance = (hrp.Position - cp243.Position).Magnitude
+                if distance < 10 then
+                    local directionZ = Vector3.new(0, 0, 1) -- Hướng trục xanh dương (+Z) theo Screenshot_20260527-113517_Roblox.jpg
+                    local targetFlyPos = hrp.Position + (directionZ * 250)
+                    
+                    -- Thực hiện hành động bay bằng Vận tốc (Velocity) đủ quãng đường 250 studs
+                    while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetFlyPos.X, targetFlyPos.Z)).Magnitude > 5 do
+                        hrp.Velocity = directionZ * currentFlySpeed
+                        task.wait()
+                    end
+                    hrp.Velocity = Vector3.new(0, 0.2, 0) -- Reset lại vận tốc sau khi bay xong
+                    task.wait(1) -- Tránh kích hoạt lại liên tục quá nhanh khi vừa bay xong
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+    -- ========================================================
+
     task.spawn(function()
         local lastFoundTime = tick()
         while running do
