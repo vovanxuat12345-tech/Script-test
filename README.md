@@ -325,15 +325,33 @@ local function flyToTarget(target)
     hrp.Velocity = Vector3.new(0, 0.2, 0)
     if conn then conn:Disconnect(); conn = nil end 
     
+    -- ========================================================
+    -- ĐOẠN XỬ LÝ ĐẶC BIỆT KHI ĐỨNG Ở STAGE 243 (DÙNG VELOCITY ĐỂ BAY)
+    -- ========================================================
     if target.Name == "243" and running then
-        local leftDirection = -hrp.CFrame.RightVector
-        local leftTargetPos = hrp.Position + (leftDirection * 200)
-        while running and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(leftTargetPos.X, leftTargetPos.Z)).Magnitude > 5 do
-            hrp.Velocity = leftDirection * currentFlySpeed
-            task.wait()
+        -- 1. Chờ đúng 0.28s khi người chơi đang đứng ở stage 243
+        hrp.Velocity = Vector3.new(0, 0, 0)
+        task.wait(0.28)
+        
+        if running and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local currentHrp = player.Character.HumanoidRootPart
+            local startPos = currentHrp.Position
+            
+            -- Xác định vị trí đích cách 200 studs theo hướng xanh dương (NAM +Z) dựa trên ảnh Screenshot_20260527-113517_Roblox.jpg
+            local blueDirectionPos = Vector3.new(startPos.X, startPos.Y, startPos.Z + 200)
+            
+            -- 2. Dùng lực đẩy Velocity để nhân vật tự bay thẳng theo hướng xanh dương
+            while running and (Vector2.new(currentHrp.Position.X, currentHrp.Position.Z) - Vector2.new(blueDirectionPos.X, blueDirectionPos.Z)).Magnitude > 5 do
+                currentHrp.Velocity = Vector3.new(0, 0.2, currentFlySpeed)
+                task.wait()
+            end
+            
+            -- 3. Bay đủ 200 studs thì dừng hẳn lại
+            currentHrp.Velocity = Vector3.new(0, 0.2, 0)
         end
-        hrp.Velocity = Vector3.new(0, 0.2, 0)
+        return -- Kết thúc xử lý riêng cho Stage 243, bỏ qua đoạn delay mặc định ở dưới
     end
+    -- ========================================================
     
     currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED
     scanMultiplier = 1
