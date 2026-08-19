@@ -21,7 +21,7 @@ local oldLoading = player:WaitForChild("PlayerGui"):FindFirstChild("Loading_Chie
 if oldLoading then oldLoading:Destroy() end
 
 -- ==========================================
--- ĐOẠN XỬ LÝ AUTO REJOIN CHUẨN (0.5S)
+-- ĐOẠN XỬ LÝ AUTO REJOIN CHUẨN (ĐÃ ĐỔI LINK MỚI)
 -- ==========================================
 local isRejoining = false
 
@@ -38,7 +38,7 @@ local function autoRejoin()
             local p = game:GetService("Players").LocalPlayer
             repeat task.wait() until p and p:FindFirstChild("PlayerGui")
             
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/vovanxuat12345-tech/Script-test/refs/heads/main/README.md"))()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/vovanxuat12345-tech/Obby-for-ugc-AFK-OR-PLAY-/refs/heads/main/README.md?t=" .. os.time()))()
         ]])
     end
     
@@ -62,9 +62,9 @@ end)
 -- ==========================================
 
 local DEFAULT_SETTINGS = {
-    FLY_UP_HEIGHT = 10,
-    FLY_SPEED = 200, 
-    WAIT_TIME = 0.28,
+    FLY_UP_HEIGHT = 8,
+    FLY_SPEED = 35, -- Đã hạ xuống 35 để tránh Anti-Cheat quét Speed
+    WAIT_TIME = 0.5,
     CHECKPOINT_FOLDER = workspace:WaitForChild("Checkpoints", 15)
 }
 
@@ -288,75 +288,74 @@ local function toggleProtection(state)
     end
 end
 
+-- ========================================================
+-- LOGIC DI CHUYỂN MỚI: DÙNG TWEENSERVICE ĐỂ QUA MẶT ANTI-CHEAT
+-- ========================================================
 local function flyToTarget(target)
-    local char = player.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp or not target then return end
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp or not target or not running then return end
     
-    local touched = false
-    local conn; conn = target.Touched:Connect(function(hit) 
-        if hit:IsDescendantOf(char) then 
-            touched = true 
-            if conn then conn:Disconnect(); conn = nil end 
-        end 
+    -- Vị trí đỉnh Checkpoint (cách 3 studs theo trục Y)
+    local targetCFrame = target.CFrame * CFrame.new(0, 3, 0)
+    local distance = (hrp.Position - targetCFrame.Position).Magnitude
+    
+    -- Tính toán thời gian Tween dựa trên FLY_SPEED an toàn
+    local tweenTime = distance / currentFlySpeed
+    local tweenInfo = TweenInfo.new(tweenTime, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    
+    local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+    tween:Play()
+    
+    -- Chờ tween di chuyển hoàn tất
+    local completed = false
+    local connection
+    connection = tween.Completed:Connect(function()
+        completed = true
+        if connection then connection:Disconnect(); connection = nil end
     end)
     
-    local targetPos = target.Position 
-
-    local upY = hrp.Position.Y + DEFAULT_SETTINGS.FLY_UP_HEIGHT
-    while running and not touched and hrp.Position.Y < upY - 1 do 
-        hrp.Velocity = Vector3.new(0, 50, 0); task.wait() 
-    end
-    
-    while running and not touched and (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetPos.X, targetPos.Z)).Magnitude > 4 do
-        hrp.Velocity = (Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z) - hrp.Position).Unit * currentFlySpeed
+    while running and not completed do
         task.wait()
     end
     
-    local t = tick()
-    while running and not touched do
-        hrp.Velocity = (targetPos - hrp.Position).Unit * (currentFlySpeed * 0.4)
-        task.wait()
-        if tick() - t > 6 then 
-            hrp.CFrame = CFrame.new(targetPos); 
-            touched = true 
-        end
-    end
+    if not running then tween:Cancel(); return end
 
-    hrp.Velocity = Vector3.new(0, 0.2, 0)
-    if conn then conn:Disconnect(); conn = nil end 
+    -- Giả lập tiếp đất/chạm Checkpoint thật sự
+    hrp.CFrame = target.CFrame * CFrame.new(0, 1, 0)
     
+    if firetouchinterest and target:IsA("BasePart") then
+        firetouchinterest(hrp, target, 0)
+        task.wait(0.05)
+        firetouchinterest(hrp, target, 1)
+    end
+    
+    task.wait(0.15) -- Dừng ngắn để server xác nhận Touch Event
+
     -- ========================================================
-    -- ĐOẠN XỬ LÝ ĐẶC BIỆT KHI ĐỨNG Ở STAGE 243 (DÙNG VELOCITY ĐỂ BAY)
+    -- ĐOẠN XỬ LÝ ĐẶC BIỆT KHI ĐỨNG Ở STAGE 243 (DÙNG TWEEN THAY CHO VELOCITY)
     -- ========================================================
     if target.Name == "243" and running then
-        -- 1. Chờ đúng 0.28s khi người chơi đang đứng ở stage 243
-        hrp.Velocity = Vector3.new(0, 0, 0)
         task.wait(0.28)
-        
         if running and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local currentHrp = player.Character.HumanoidRootPart
             local startPos = currentHrp.Position
+            local blueDirectionCFrame = CFrame.new(startPos.X, startPos.Y, startPos.Z + 200)
             
-            -- Xác định vị trí đích cách 200 studs theo hướng xanh dương (NAM +Z) dựa trên ảnh Screenshot_20260527-113517_Roblox.jpg
-            local blueDirectionPos = Vector3.new(startPos.X, startPos.Y, startPos.Z + 200)
-            
-            -- 2. Dùng lực đẩy Velocity để nhân vật tự bay thẳng theo hướng xanh dương
-            while running and (Vector2.new(currentHrp.Position.X, currentHrp.Position.Z) - Vector2.new(blueDirectionPos.X, blueDirectionPos.Z)).Magnitude > 5 do
-                currentHrp.Velocity = Vector3.new(0, 0.2, currentFlySpeed)
-                task.wait()
-            end
-            
-            -- 3. Bay đủ 200 studs thì dừng hẳn lại
-            currentHrp.Velocity = Vector3.new(0, 0.2, 0)
+            local tInfo = TweenInfo.new(200 / currentFlySpeed, Enum.EasingStyle.Linear)
+            local tTween = TweenService:Create(currentHrp, tInfo, {CFrame = blueDirectionCFrame})
+            tTween:Play()
+            tTween.Completed:Wait()
         end
-        return -- Kết thúc xử lý riêng cho Stage 243, bỏ qua đoạn delay mặc định ở dưới
+        return
     end
     -- ========================================================
     
     currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED
     scanMultiplier = 1
     
-    task.wait(DEFAULT_SETTINGS.WAIT_TIME) 
+    -- Delay ngẫu nhiên giữa các Checkpoint để qua mặt Speed Check
+    task.wait(DEFAULT_SETTINGS.WAIT_TIME + (math.random() * 0.2 - 0.1)) 
 end
 
 local function startFarming()
@@ -391,7 +390,7 @@ local function startFarming()
             else
                 if tick() - lastFoundTime > 5 then
                     scanMultiplier = 2
-                    currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED * 1.5
+                    currentFlySpeed = DEFAULT_SETTINGS.FLY_SPEED * 1.2
                     lastFoundTime = tick()
                 end
                 task.wait(0.5)
