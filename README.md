@@ -146,7 +146,7 @@ local function removeClassicESP(part)
     end
 end
 
--- PLAYER HIGHLIGHT (CHỈ VIỀN, BỎ NAMETAG DÙNG TÊN ĐỂ TRÁNH GLITCH)
+-- PLAYER HIGHLIGHT (CHỈ VIỀN)
 local playerHLObj = nil
 
 local function updatePlayerHighlight()
@@ -161,7 +161,7 @@ local function updatePlayerHighlight()
         playerHLObj = Instance.new("Highlight")
         playerHLObj.Name = "Player_Self_Outline"
         playerHLObj.Adornee = char
-        playerHLObj.FillTransparency = 1 -- Chỉ giữ viền, không tô màu thân
+        playerHLObj.FillTransparency = 1
         playerHLObj.OutlineColor = Color3.fromRGB(255, 0, 0)
         playerHLObj.OutlineTransparency = 0
         playerHLObj.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -389,10 +389,10 @@ local frame = Instance.new("Frame", mainGui)
 frame.Size = UDim2.new(0, 220, 0, 180); frame.Position = UDim2.new(0, 30, 0.5, -90); frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15); frame.BorderSizePixel = 0; frame.ClipsDescendants = false; frame.Active = true
 Instance.new("UICorner", frame); makeDraggable(frame)
 
--- SETTINGS PANEL (BẢNG CÀI ĐẶT ĐỘC LẬP, KÉO THẢ TỰ DO)
-local settingsPanel = Instance.new("Frame", mainGui)
-settingsPanel.Size = UDim2.new(0, 180, 0, 180); settingsPanel.Position = UDim2.new(0, 260, 0.5, -90); settingsPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 15); settingsPanel.BorderSizePixel = 0; settingsPanel.Visible = false; settingsPanel.ZIndex = 4; settingsPanel.ClipsDescendants = true; settingsPanel.Active = true
-Instance.new("UICorner", settingsPanel); makeDraggable(settingsPanel)
+-- SETTINGS PANEL (GẮN DÍNH VÀO BÊN HÔNG BẢNG CHÍNH, KÉO DI CHUYỂN LIỀN KHỐI)
+local settingsPanel = Instance.new("Frame", frame)
+settingsPanel.Size = UDim2.new(0, 180, 0, 180); settingsPanel.Position = UDim2.new(1, 8, 0, 0); settingsPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 15); settingsPanel.BorderSizePixel = 0; settingsPanel.Visible = false; settingsPanel.ZIndex = 4; settingsPanel.ClipsDescendants = true
+Instance.new("UICorner", settingsPanel)
 
 -- HIỆU ỨNG CHẤM ĐỎ BAY TRONG BACKGROUND SETTINGS PANEL
 task.spawn(function()
@@ -563,7 +563,7 @@ end)
 local bugReportFrame = Instance.new("TextButton", mainGui); bugReportFrame.Size = UDim2.new(0, 320, 0, 180); bugReportFrame.Position = UDim2.new(0.5, -160, 0.5, -90); bugReportFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10); bugReportFrame.BackgroundTransparency = 0.25; bugReportFrame.Visible = false; bugReportFrame.ZIndex = 100
 Instance.new("UICorner", bugReportFrame).CornerRadius = UDim.new(0, 8)
 local stroke = Instance.new("UIStroke", bugReportFrame); stroke.Color = Color3.new(1, 0, 0); stroke.Thickness = 2; stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-local bugTextLabel = Instance.new("TextLabel", bugReportFrame); bugTextLabel.Size = UDim2.new(1, -20, 1, -20); bugTextLabel.Position = UDim2.new(0, 10, 0, 10); bugTextLabel.BackgroundTransparency = 1; bugTextLabel.Text = "-INFO BOARD-\n-Update 1.103 (Draft)😎\n+added Independent Draggable Settings UI\n+added Player Outline Highlight (Glitch Fixed)\n+added Floating Red Particles in Settings\n+added Fly Speed Control (20-70)\n+swapped ⚙️ and ! buttons\n+updated TikTok owner branding text"; bugTextLabel.TextColor3 = Color3.new(1, 1, 1); bugTextLabel.Font = Enum.Font.GothamMedium; bugTextLabel.TextSize = 12; bugTextLabel.TextWrapped = true; bugTextLabel.TextXAlignment = Enum.TextXAlignment.Left; bugTextLabel.TextYAlignment = Enum.TextYAlignment.Top; bugTextLabel.ZIndex = 101
+local bugTextLabel = Instance.new("TextLabel", bugReportFrame); bugTextLabel.Size = UDim2.new(1, -20, 1, -20); bugTextLabel.Position = UDim2.new(0, 10, 0, 10); bugTextLabel.BackgroundTransparency = 1; bugTextLabel.Text = "-INFO BOARD-\n-Update 1.103 (Draft)😎\n+fixed Settings UI Dragging Attachment\n+added Player Outline Highlight\n+added Floating Red Particles in Settings\n+added Fly Speed Control (20-70)\n+swapped ⚙️ and ! buttons\n+updated TikTok owner branding text"; bugTextLabel.TextColor3 = Color3.new(1, 1, 1); bugTextLabel.Font = Enum.Font.GothamMedium; bugTextLabel.TextSize = 12; bugTextLabel.TextWrapped = true; bugTextLabel.TextXAlignment = Enum.TextXAlignment.Left; bugTextLabel.TextYAlignment = Enum.TextYAlignment.Top; bugTextLabel.ZIndex = 101
 
 infoBtn.MouseButton1Click:Connect(function() bugReportFrame.Visible = not bugReportFrame.Visible end)
 bugReportFrame.MouseButton1Click:Connect(function() bugReportFrame.Visible = false end)
