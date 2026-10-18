@@ -813,4 +813,11 @@ player.CharacterAdded:Connect(function(newChar)
 end)
 
 if _G.IsAutoRejoin then
-    _G.IsAutoRejoin
+    _G.IsAutoRejoin = nil
+    task.spawn(function()
+        local char = player.Character or player.CharacterAdded:Wait()
+        char:WaitForChild("HumanoidRootPart", 9e9)
+        task.wait(1.5)
+        startFarming()
+    end)
+end
