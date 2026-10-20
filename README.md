@@ -5,6 +5,8 @@ local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
 local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
@@ -88,11 +90,26 @@ local isSettingsOpen = false
 local espEnabled = true
 local playerHighlightEnabled = false
 local afkModeEnabled = false
+
+-- CÁC TÍNH NĂNG MẶC ĐỊNH BẬT SẴN (ON)
+local autoRebirthEnabled = true 
+local antiAfkEnabled = true
+local freeCamEnabled = false
+
+local stage251ReachedTime = 0
+local lastJumpTime = tick()
 local protectionConnection = nil
 local currentTargetPart = nil
 local farmingTask = nil 
 
--- AFK STATS TRACKING & NOTIFICATION TRACKING
+-- FREE CAM ENGINE VARIABLES
+local freeCamPos = Vector3.new()
+local freeCamYaw = 0   
+local freeCamPitch = 0 
+local freeCamSpeed = 50
+local savedWalkSpeed = 16
+local savedJumpPower = 50
+
 local afkStartTime = 0
 local afkStartStage = 0
 local stagesGained = 0
@@ -105,6 +122,37 @@ local function sendNotification(title, text)
             Text = text,
             Duration = 4
         })
+    end)
+end
+
+local function triggerRebirth()
+    pcall(function()
+        local mainRemote = ReplicatedStorage:FindFirstChild("MainRemote")
+        if mainRemote then
+            mainRemote:FireServer({
+                Request = "RequestRebirth"
+            })
+        end
+    end)
+end
+
+local function lockPlayerCharacter(lock)
+    pcall(function()
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            if lock then
+                savedWalkSpeed = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
+                savedJumpPower = hum.JumpPower > 0 and hum.JumpPower or 50
+                hum.WalkSpeed = 0
+                hum.JumpPower = 0
+                hum.JumpHeight = 0
+            else
+                hum.WalkSpeed = savedWalkSpeed
+                hum.JumpPower = savedJumpPower
+                hum.JumpHeight = savedJumpPower
+            end
+        end
     end)
 end
 
@@ -146,7 +194,6 @@ local function removeClassicESP(part)
     end
 end
 
--- PLAYER HIGHLIGHT (CHỈ VIỀN)
 local playerHLObj = nil
 
 local function updatePlayerHighlight()
@@ -169,8 +216,68 @@ local function updatePlayerHighlight()
     end
 end
 
-RunService.RenderStepped:Connect(function()
+-- CHỈ CHO PHÉP XOAY CAMERA Ở NỬA MẢNH MÀN HÌNH BÊN PHẢI (TRÁNH JOYSTICK BÊN TRÁI)
+local isRightDragging = false
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if freeCamEnabled and input.UserInputType == Enum.UserInputType.MouseButton2 then
+        isRightDragging = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        isRightDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input, gameProcessed)
+    if not freeCamEnabled then return end
+
+    if input.UserInputType == Enum.UserInputType.MouseMovement and isRightDragging then
+        local delta = input.Delta
+        freeCamYaw = freeCamYaw - (delta.X * 0.005)
+        freeCamPitch = math.clamp(freeCamPitch - (delta.Y * 0.005), math.rad(-80), math.rad(80))
+    elseif input.UserInputType == Enum.UserInputType.Touch then
+        -- CHỈ NHẬN DIỆN NẾU CHẠM Ở NỬA BÊN PHẢI MÀN HÌNH (X >= ViewportSize.X / 2)
+        if input.Position.X >= (camera.ViewportSize.X / 2) then
+            local delta = input.Delta
+            freeCamYaw = freeCamYaw - (delta.X * 0.005)
+            freeCamPitch = math.clamp(freeCamPitch - (delta.Y * 0.005), math.rad(-80), math.rad(80))
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
     updatePlayerHighlight()
+
+    if freeCamEnabled then
+        camera.CameraType = Enum.CameraType.Scriptable
+        
+        local camRot = CFrame.Angles(0, freeCamYaw, 0) * CFrame.Angles(freeCamPitch, 0, 0)
+        
+        local moveVector = Vector3.new()
+        pcall(function()
+            local controls = require(player.PlayerScripts:WaitForChild("PlayerModule")):GetControls()
+            moveVector = controls:GetMoveVector()
+        end)
+
+        if moveVector.Magnitude > 0 then
+            local worldMove = camRot:VectorToWorldSpace(Vector3.new(moveVector.X, 0, moveVector.Z))
+            freeCamPos = freeCamPos + (worldMove * freeCamSpeed * dt)
+        end
+
+        pcall(function()
+            local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.WalkSpeed ~= 0 then hum.WalkSpeed = 0 end
+        end)
+
+        camera.CFrame = CFrame.new(freeCamPos) * camRot
+    else
+        if camera.CameraType == Enum.CameraType.Scriptable and not afkModeEnabled then
+            camera.CameraType = Enum.CameraType.Custom
+        end
+    end
 
     if not espEnabled or afkModeEnabled then
         for part in pairs(activeESP) do removeClassicESP(part) end
@@ -210,21 +317,31 @@ RunService.RenderStepped:Connect(function()
         if not activeESP[part] then createClassicESP(part) end
         local espData = activeESP[part]
         if espData then
-            local dist = math.floor((hrp.Position - part.Position).Magnitude)
+            local basePos = hrp.Position
+            if freeCamEnabled then
+                basePos = freeCamPos
+            end
+            local dist = math.floor((basePos - part.Position).Magnitude)
             if espData.Label then espData.Label.Text = "Stage " .. part.Name .. " [" .. dist .. "m]" end
             
             if espData.Line2D then
-                local playerHead = player.Character:FindFirstChild("Head") or hrp
-                local p1 = camera:WorldToViewportPoint(playerHead.Position)
+                local fromVector2D
+                if freeCamEnabled then
+                    fromVector2D = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+                else
+                    local playerHead = player.Character:FindFirstChild("Head") or hrp
+                    local p1 = camera:WorldToViewportPoint(playerHead.Position)
+                    fromVector2D = Vector2.new(p1.X, p1.Y)
+                end
+
                 local p2 = camera:WorldToViewportPoint(part.Position)
-                
                 local toPos = Vector2.new(p2.X, p2.Y)
                 if p2.Z < 0 then
                     local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
                     toPos = screenCenter - (toPos - screenCenter).Unit * 1000
                 end
 
-                espData.Line2D.From = Vector2.new(p1.X, p1.Y)
+                espData.Line2D.From = fromVector2D
                 espData.Line2D.To = toPos
                 espData.Line2D.Visible = true
             end
@@ -287,7 +404,6 @@ end
 
 createLoadingScreen()
 
--- AFK DASHBOARD SCREEN
 local afkGui = Instance.new("ScreenGui", player.PlayerGui)
 afkGui.Name = "AFK_FullScreen_Saver"
 afkGui.ResetOnSpawn = false
@@ -361,6 +477,36 @@ task.spawn(function()
             sendNotification("🎉 STAGE MILESTONE!", "Chúc mừng! Bạn đã đạt Stage " .. tostring(currentStage) .. "!")
         end
 
+        if autoRebirthEnabled and running then
+            if currentStage == 251 then
+                if stage251ReachedTime == 0 then
+                    stage251ReachedTime = tick()
+                elseif tick() - stage251ReachedTime >= 10 then
+                    triggerRebirth()
+                    stage251ReachedTime = tick()
+                end
+            else
+                stage251ReachedTime = 0
+            end
+        else
+            stage251ReachedTime = 0
+        end
+
+        if antiAfkEnabled then
+            if tick() - lastJumpTime >= 900 then
+                lastJumpTime = tick()
+                pcall(function()
+                    local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        hum.Jump = true
+                    else
+                        VirtualUser:Button1Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                        VirtualUser:Button1Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                    end
+                end)
+            end
+        end
+
         if afkModeEnabled then
             local elapsed = math.floor(tick() - afkStartTime)
             local hrs = math.floor(elapsed / 3600)
@@ -389,12 +535,10 @@ local frame = Instance.new("Frame", mainGui)
 frame.Size = UDim2.new(0, 220, 0, 180); frame.Position = UDim2.new(0, 30, 0.5, -90); frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15); frame.BorderSizePixel = 0; frame.ClipsDescendants = false; frame.Active = true
 Instance.new("UICorner", frame); makeDraggable(frame)
 
--- SETTINGS PANEL (GẮN DÍNH VÀO BÊN HÔNG BẢNG CHÍNH, KÉO DI CHUYỂN LIỀN KHỐI)
 local settingsPanel = Instance.new("Frame", frame)
-settingsPanel.Size = UDim2.new(0, 180, 0, 180); settingsPanel.Position = UDim2.new(1, 8, 0, 0); settingsPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 15); settingsPanel.BorderSizePixel = 0; settingsPanel.Visible = false; settingsPanel.ZIndex = 4; settingsPanel.ClipsDescendants = true
+settingsPanel.Size = UDim2.new(0, 180, 0, 226); settingsPanel.Position = UDim2.new(1, 8, 0, 0); settingsPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 15); settingsPanel.BorderSizePixel = 0; settingsPanel.Visible = false; settingsPanel.ZIndex = 4; settingsPanel.ClipsDescendants = true
 Instance.new("UICorner", settingsPanel)
 
--- HIỆU ỨNG CHẤM ĐỎ BAY TRONG BACKGROUND SETTINGS PANEL
 task.spawn(function()
     while mainGui.Parent do
         if settingsPanel.Visible and not afkModeEnabled then
@@ -407,18 +551,18 @@ task.spawn(function()
 end)
 
 local settingsTitle = Instance.new("TextLabel", settingsPanel)
-settingsTitle.Size = UDim2.new(1, 0, 0, 24); settingsTitle.Position = UDim2.new(0, 0, 0, 4); settingsTitle.BackgroundTransparency = 1; settingsTitle.Text = "SETTINGS [v1.103]"; settingsTitle.TextColor3 = Color3.new(1, 1, 1); settingsTitle.Font = Enum.Font.GothamBold; settingsTitle.TextSize = 12; settingsTitle.ZIndex = 6
+settingsTitle.Size = UDim2.new(1, 0, 0, 24); settingsTitle.Position = UDim2.new(0, 0, 0, 4); settingsTitle.BackgroundTransparency = 1; settingsTitle.Text = "SETTINGS [v1.107]"; settingsTitle.TextColor3 = Color3.new(1, 1, 1); settingsTitle.Font = Enum.Font.GothamBold; settingsTitle.TextSize = 12; settingsTitle.ZIndex = 6
 
 -- 1. FLY SPEED CONTROL
 local speedTitle = Instance.new("TextLabel", settingsPanel)
-speedTitle.Size = UDim2.new(1, -20, 0, 16); speedTitle.Position = UDim2.new(0, 8, 0, 28); speedTitle.BackgroundTransparency = 1; speedTitle.Text = "Fly Speed (20 - 70):"; speedTitle.TextColor3 = Color3.fromRGB(220, 220, 220); speedTitle.Font = Enum.Font.Gotham; speedTitle.TextSize = 10; speedTitle.TextXAlignment = Enum.TextXAlignment.Left; speedTitle.ZIndex = 6
+speedTitle.Size = UDim2.new(1, -20, 0, 16); speedTitle.Position = UDim2.new(0, 8, 0, 26); speedTitle.BackgroundTransparency = 1; speedTitle.Text = "Fly Speed (20 - 70):"; speedTitle.TextColor3 = Color3.fromRGB(220, 220, 220); speedTitle.Font = Enum.Font.Gotham; speedTitle.TextSize = 10; speedTitle.TextXAlignment = Enum.TextXAlignment.Left; speedTitle.ZIndex = 6
 
 local speedInput = Instance.new("TextBox", settingsPanel)
-speedInput.Size = UDim2.new(0, 40, 0, 18); speedInput.Position = UDim2.new(1, -48, 0, 26); speedInput.BackgroundColor3 = Color3.fromRGB(30, 30, 30); speedInput.Text = tostring(currentFlySpeed); speedInput.TextColor3 = Color3.new(1, 0, 0); speedInput.Font = Enum.Font.GothamBold; speedInput.TextSize = 10; speedInput.ZIndex = 7; speedInput.ClearTextOnFocus = false
+speedInput.Size = UDim2.new(0, 40, 0, 18); speedInput.Position = UDim2.new(1, -48, 0, 24); speedInput.BackgroundColor3 = Color3.fromRGB(30, 30, 30); speedInput.Text = tostring(currentFlySpeed); speedInput.TextColor3 = Color3.new(1, 0, 0); speedInput.Font = Enum.Font.GothamBold; speedInput.TextSize = 10; speedInput.ZIndex = 7; speedInput.ClearTextOnFocus = false
 Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 4)
 
 local sliderBG = Instance.new("Frame", settingsPanel)
-sliderBG.Size = UDim2.new(1, -16, 0, 5); sliderBG.Position = UDim2.new(0, 8, 0, 50); sliderBG.BackgroundColor3 = Color3.fromRGB(35, 35, 35); sliderBG.BorderSizePixel = 0; sliderBG.ZIndex = 6
+sliderBG.Size = UDim2.new(1, -16, 0, 5); sliderBG.Position = UDim2.new(0, 8, 0, 46); sliderBG.BackgroundColor3 = Color3.fromRGB(35, 35, 35); sliderBG.BorderSizePixel = 0; sliderBG.ZIndex = 6
 Instance.new("UICorner", sliderBG).CornerRadius = UDim.new(0, 4)
 
 local sliderFill = Instance.new("Frame", sliderBG)
@@ -470,9 +614,9 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- 2. TOGGLE ESP BUTTON
+-- 2. ESP BUTTON
 local espBtn = Instance.new("TextButton", settingsPanel)
-espBtn.Size = UDim2.new(1, -16, 0, 22); espBtn.Position = UDim2.new(0, 8, 0, 66); espBtn.BackgroundTransparency = 1; espBtn.Text = "🔴 ESP Lines"; espBtn.TextColor3 = Color3.fromRGB(220, 220, 220); espBtn.Font = Enum.Font.Gotham; espBtn.TextSize = 10; espBtn.TextXAlignment = Enum.TextXAlignment.Left; espBtn.ZIndex = 7
+espBtn.Size = UDim2.new(1, -16, 0, 20); espBtn.Position = UDim2.new(0, 8, 0, 58); espBtn.BackgroundTransparency = 1; espBtn.Text = "🔴 ESP Lines"; espBtn.TextColor3 = Color3.fromRGB(220, 220, 220); espBtn.Font = Enum.Font.Gotham; espBtn.TextSize = 10; espBtn.TextXAlignment = Enum.TextXAlignment.Left; espBtn.ZIndex = 7
 
 local function updateEspUI()
     if espEnabled then
@@ -487,9 +631,9 @@ espBtn.MouseButton1Click:Connect(function()
     updateEspUI()
 end)
 
--- 3. TOGGLE PLAYER HIGHLIGHT BUTTON
+-- 3. PLAYER HIGHLIGHT BUTTON
 local playerHlBtn = Instance.new("TextButton", settingsPanel)
-playerHlBtn.Size = UDim2.new(1, -16, 0, 22); playerHlBtn.Position = UDim2.new(0, 8, 0, 92); playerHlBtn.BackgroundTransparency = 1; playerHlBtn.Text = "Player Highlight  OFF"; playerHlBtn.TextColor3 = Color3.fromRGB(220, 220, 220); playerHlBtn.Font = Enum.Font.Gotham; playerHlBtn.TextSize = 10; playerHlBtn.TextXAlignment = Enum.TextXAlignment.Left; playerHlBtn.ZIndex = 7
+playerHlBtn.Size = UDim2.new(1, -16, 0, 20); playerHlBtn.Position = UDim2.new(0, 8, 0, 80); playerHlBtn.BackgroundTransparency = 1; playerHlBtn.Text = "Player Highlight  OFF"; playerHlBtn.TextColor3 = Color3.fromRGB(220, 220, 220); playerHlBtn.Font = Enum.Font.Gotham; playerHlBtn.TextSize = 10; playerHlBtn.TextXAlignment = Enum.TextXAlignment.Left; playerHlBtn.ZIndex = 7
 
 local function updatePlayerHlUI()
     if playerHighlightEnabled then
@@ -505,9 +649,67 @@ playerHlBtn.MouseButton1Click:Connect(function()
     updatePlayerHighlight()
 end)
 
--- 4. TOGGLE AFK BLACK SCREEN BUTTON
+-- 4. AUTO REBIRTH BUTTON
+local rebirthBtn = Instance.new("TextButton", settingsPanel)
+rebirthBtn.Size = UDim2.new(1, -16, 0, 20); rebirthBtn.Position = UDim2.new(0, 8, 0, 102); rebirthBtn.BackgroundTransparency = 1; rebirthBtn.Text = "🔴 Auto Rebirth"; rebirthBtn.TextColor3 = Color3.fromRGB(220, 220, 220); rebirthBtn.Font = Enum.Font.Gotham; rebirthBtn.TextSize = 10; rebirthBtn.TextXAlignment = Enum.TextXAlignment.Left; rebirthBtn.ZIndex = 7
+
+local function updateRebirthUI()
+    if autoRebirthEnabled then
+        rebirthBtn.Text = "🔴 Auto Rebirth"
+    else
+        rebirthBtn.Text = "Auto Rebirth  OFF"
+    end
+end
+
+rebirthBtn.MouseButton1Click:Connect(function()
+    autoRebirthEnabled = not autoRebirthEnabled
+    updateRebirthUI()
+end)
+
+-- 5. ANTI-AFK BUTTON
+local antiAfkBtn = Instance.new("TextButton", settingsPanel)
+antiAfkBtn.Size = UDim2.new(1, -16, 0, 20); antiAfkBtn.Position = UDim2.new(0, 8, 0, 124); antiAfkBtn.BackgroundTransparency = 1; antiAfkBtn.Text = "🔴 Anti-AFK (15m)"; antiAfkBtn.TextColor3 = Color3.fromRGB(220, 220, 220); antiAfkBtn.Font = Enum.Font.Gotham; antiAfkBtn.TextSize = 10; antiAfkBtn.TextXAlignment = Enum.TextXAlignment.Left; antiAfkBtn.ZIndex = 7
+
+local function updateAntiAfkUI()
+    if antiAfkEnabled then
+        antiAfkBtn.Text = "🔴 Anti-AFK (15m)"
+    else
+        antiAfkBtn.Text = "Anti-AFK  OFF"
+    end
+end
+
+antiAfkBtn.MouseButton1Click:Connect(function()
+    antiAfkEnabled = not antiAfkEnabled
+    updateAntiAfkUI()
+end)
+
+-- 6. FREE CAM BUTTON
+local freeCamBtn = Instance.new("TextButton", settingsPanel)
+freeCamBtn.Size = UDim2.new(1, -16, 0, 20); freeCamBtn.Position = UDim2.new(0, 8, 0, 146); freeCamBtn.BackgroundTransparency = 1; freeCamBtn.Text = "Free Cam  OFF"; freeCamBtn.TextColor3 = Color3.fromRGB(220, 220, 220); freeCamBtn.Font = Enum.Font.Gotham; freeCamBtn.TextSize = 10; freeCamBtn.TextXAlignment = Enum.TextXAlignment.Left; freeCamBtn.ZIndex = 7
+
+local function toggleFreeCam(state)
+    freeCamEnabled = state
+    lockPlayerCharacter(freeCamEnabled)
+    
+    if freeCamEnabled then
+        freeCamBtn.Text = "🔴 Free Cam"
+        freeCamPos = camera.CFrame.Position
+        local _, y, _ = camera.CFrame:ToOrientation()
+        freeCamYaw = y
+        freeCamPitch = 0
+    else
+        freeCamBtn.Text = "Free Cam  OFF"
+        camera.CameraType = Enum.CameraType.Custom
+    end
+end
+
+freeCamBtn.MouseButton1Click:Connect(function()
+    toggleFreeCam(not freeCamEnabled)
+end)
+
+-- 7. AFK MODE BUTTON
 local afkBtn = Instance.new("TextButton", settingsPanel)
-afkBtn.Size = UDim2.new(1, -16, 0, 22); afkBtn.Position = UDim2.new(0, 8, 0, 118); afkBtn.BackgroundTransparency = 1; afkBtn.Text = "AFK Mode  OFF"; afkBtn.TextColor3 = Color3.fromRGB(220, 220, 220); afkBtn.Font = Enum.Font.Gotham; afkBtn.TextSize = 10; afkBtn.TextXAlignment = Enum.TextXAlignment.Left; afkBtn.ZIndex = 7
+afkBtn.Size = UDim2.new(1, -16, 0, 20); afkBtn.Position = UDim2.new(0, 8, 0, 168); afkBtn.BackgroundTransparency = 1; afkBtn.Text = "AFK Mode  OFF"; afkBtn.TextColor3 = Color3.fromRGB(220, 220, 220); afkBtn.Font = Enum.Font.Gotham; afkBtn.TextSize = 10; afkBtn.TextXAlignment = Enum.TextXAlignment.Left; afkBtn.ZIndex = 7
 
 local function toggleAfkMode(state)
     afkModeEnabled = state
@@ -535,7 +737,6 @@ end
 afkBtn.MouseButton1Click:Connect(function() toggleAfkMode(not afkModeEnabled) end)
 exitAfkBtn.MouseButton1Click:Connect(function() toggleAfkMode(false) end)
 
--- HIỆU ỨNG CHẤM ĐỎ BAY TRONG BACKGROUND UI CHÍNH
 task.spawn(function()
     while mainGui.Parent do
         if not afkModeEnabled then
@@ -563,7 +764,7 @@ end)
 local bugReportFrame = Instance.new("TextButton", mainGui); bugReportFrame.Size = UDim2.new(0, 320, 0, 180); bugReportFrame.Position = UDim2.new(0.5, -160, 0.5, -90); bugReportFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10); bugReportFrame.BackgroundTransparency = 0.25; bugReportFrame.Visible = false; bugReportFrame.ZIndex = 100
 Instance.new("UICorner", bugReportFrame).CornerRadius = UDim.new(0, 8)
 local stroke = Instance.new("UIStroke", bugReportFrame); stroke.Color = Color3.new(1, 0, 0); stroke.Thickness = 2; stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-local bugTextLabel = Instance.new("TextLabel", bugReportFrame); bugTextLabel.Size = UDim2.new(1, -20, 1, -20); bugTextLabel.Position = UDim2.new(0, 10, 0, 10); bugTextLabel.BackgroundTransparency = 1; bugTextLabel.Text = "-INFO BOARD-\n-Update 1.103 (Draft)😎\n+fixed Settings UI Dragging Attachment\n+added Player Outline Highlight\n+added Floating Red Particles in Settings\n+added Fly Speed Control (20-70)\n+swapped ⚙️ and ! buttons\n+updated TikTok owner branding text"; bugTextLabel.TextColor3 = Color3.new(1, 1, 1); bugTextLabel.Font = Enum.Font.GothamMedium; bugTextLabel.TextSize = 12; bugTextLabel.TextWrapped = true; bugTextLabel.TextXAlignment = Enum.TextXAlignment.Left; bugTextLabel.TextYAlignment = Enum.TextYAlignment.Top; bugTextLabel.ZIndex = 101
+local bugTextLabel = Instance.new("TextLabel", bugReportFrame); bugTextLabel.Size = UDim2.new(1, -20, 1, -20); bugTextLabel.Position = UDim2.new(0, 10, 0, 10); bugTextLabel.BackgroundTransparency = 1; bugTextLabel.Text = "-INFO BOARD-\n-Update 1.107 🚀\n+Split screen touch: left side free for joystick, right side for Free Cam rotation\n+Zero tilt & ultra smooth control"; bugTextLabel.TextColor3 = Color3.new(1, 1, 1); bugTextLabel.Font = Enum.Font.GothamMedium; bugTextLabel.TextSize = 12; bugTextLabel.TextWrapped = true; bugTextLabel.TextXAlignment = Enum.TextXAlignment.Left; bugTextLabel.TextYAlignment = Enum.TextYAlignment.Top; bugTextLabel.ZIndex = 101
 
 infoBtn.MouseButton1Click:Connect(function() bugReportFrame.Visible = not bugReportFrame.Visible end)
 bugReportFrame.MouseButton1Click:Connect(function() bugReportFrame.Visible = false end)
@@ -800,6 +1001,10 @@ end)
 player.CharacterAdded:Connect(function(newChar) 
     toggleProtection(false)
     currentTargetPart = nil
+    
+    if freeCamEnabled then
+        lockPlayerCharacter(true)
+    end
     
     if wasRunningBeforeDeath then
         task.spawn(function()
